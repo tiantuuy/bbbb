@@ -26,6 +26,8 @@ jobs:
 
       # ===== 仓库 =====
       - uses: actions/checkout@v4
+        with:
+          repository: MetaCubeX/meta-rules-dat
 
       - uses: actions/checkout@v4
         with:
