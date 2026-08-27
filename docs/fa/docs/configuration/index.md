@@ -8,6 +8,22 @@
 
 <div class="grid cards" markdown> 
 
+- :material-cog-outline:{ .lg .middle } __تنظیمات مدیریت__
+
+    ---
+
+    بروزرسانی یا حذف پنل و تغییر رمز عبور.
+
+    [:octicons-arrow-right-24: شروع](admin-settings.md)
+
+- :material-cog-outline:{ .lg .middle } __بات تلگرام__
+
+    ---
+
+    اضافه کردن بات تلگرام به پنل.
+
+    [:octicons-arrow-right-24: شروع](telegram-bot.md)
+
 - :material-cog-outline:{ .lg .middle } __تنظیمات مشترک یا Common__
 
     ---
@@ -32,6 +48,14 @@
 
     [:octicons-arrow-right-24: شروع](fragment.md)
 
+- :material-cog-outline:{ .lg .middle } __اضافه کردن کانفیگ‌های شخصی__
+
+    ---
+
+    اضافه کردن لینک اشتراک و کانفیگ‌های شخصی جهت اضافه شدن به لسنک اشتراک Raw.
+
+    [:octicons-arrow-right-24: شروع](external-configs.md)
+
 - :material-cog-outline:{ .lg .middle } __تنظیمات عمومی Warp__
 
     ---
@@ -55,5 +79,13 @@
     قوانین مسیریابی رو برای دور زدن وب‌سایت‌های محلی، بلاک تبلیغات، بلاک محتوای ناخواسته و غیره اضافه کنید.
 
     [:octicons-arrow-right-24: شروع](routing-rules.md)
+
+- :material-cog-outline:{ .lg .middle } __بارگذاری و به اشتراک‌گذاری تنظیمات__
+
+    ---
+
+    بارگذاری و به اشتراک‌گذاری تنظیمات از طریق فایل و لینک.
+
+    [:octicons-arrow-right-24: شروع](import-export.md)
 
 </div>

@@ -1,12 +1,28 @@
-# :material-cog-outline:{ .md .middle } Settings Configuration
+# :material-cog-outline:{ .md .middle } Proxy Settings Configuration
 
 !!! tip
-    Please don't worry about incorrect configurations. There's a `Reset Settings` button next to the `Apply Settings` button that will reset the panel to default settings.
+    Please don't worry about incorrect configurations. There's a `Reset Settings` small button next to the `Apply Settings` button that will reset the panel to default settings.
 
 !!! info
     You must update your subscriptions after making any changes.
 
 <div class="grid cards" markdown>
+
+- :material-cog-outline:{ .lg .middle } __Admin__
+
+    ---
+
+    Update panel, Delete panel or reset panel password.
+
+    [:octicons-arrow-right-24: Getting started](admin-settings.md)
+
+- :material-cog-outline:{ .lg .middle } __Telegram Bot__
+
+    ---
+
+    Setup Telegram bot.
+
+    [:octicons-arrow-right-24: Getting started](telegram-bot.md)
 
 - :material-cog-outline:{ .lg .middle } __Common__
 
@@ -32,6 +48,14 @@
 
     [:octicons-arrow-right-24: Getting started](fragment.md)
 
+- :material-cog-outline:{ .lg .middle } __External Raw Configs__
+
+    ---
+
+    Add personal subscriptions and configs to Raw subscription.
+
+    [:octicons-arrow-right-24: Getting started](external-configs.md)
+
 - :material-cog-outline:{ .lg .middle } __Warp__
 
     ---
@@ -55,5 +79,13 @@
     Add routing rules to bypass local websites, block Ads, block unwanted content, and more.
 
     [:octicons-arrow-right-24: Getting started](routing-rules.md)
+
+- :material-cog-outline:{ .lg .middle } __Import - Export__
+
+    ---
+
+    Importing or exporting panel settings via Files or links.
+
+    [:octicons-arrow-right-24: Getting started](import-export.md)
 
 </div>

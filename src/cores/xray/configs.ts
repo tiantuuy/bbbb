@@ -1,8 +1,8 @@
-import { getDataset } from 'kv';
-import { buildDNS } from './dns';
-import { buildRoutingRules } from './routing';
-import type { Balancer, Config, Observatory, Outbound } from 'types/xray';
+import type { Balancer, Config, Observatory, Outbound } from '#types/xray';
+import { getSettings, getWarpAccounts } from '@settings';
 import { buildDokodemoInbound, buildMixedInbound } from './inbounds';
+import { buildRoutingRules } from './routing';
+import { buildDNS } from './dns';
 import {
     buildChainOutbound,
     buildWebsocketOutbound,
@@ -15,9 +15,8 @@ import {
     generateRemark,
     isDomain,
     isHttps,
-    getProtocols,
     parseHostPort,
-    toRange
+    getProtocols
 } from '@utils';
 
 function buildBalancer(tag: string, selector: string, hasFallback: boolean): Balancer {
@@ -25,9 +24,9 @@ function buildBalancer(tag: string, selector: string, hasFallback: boolean): Bal
         tag,
         selector: [selector],
         strategy: {
-            type: "leastPing",
+            type: 'leastPing',
         },
-        fallbackTag: hasFallback ? "proxy-2" : undefined
+        fallbackTag: hasFallback ? 'proxy-2' : undefined
     };
 }
 
@@ -46,23 +45,23 @@ async function buildConfig(
 ): Promise<Config> {
     const {
         fakeDNS,
-        bestWarpInterval,
-        bestVLTRInterval,
+        warpBestPingInterval,
+        bestPingInterval,
         logLevel,
         allowLANConnection
-    } = globalThis.settings;
+    } = getSettings();
     let balancers, observatory;
 
     if (isBalancer) {
-        balancers = [buildBalancer("all-proxies", "proxy", balancerFallback)]
-            .concatIf(isChain, buildBalancer("all-chains", "chain", false));
+        balancers = [buildBalancer('all-proxies', 'proxy', balancerFallback)]
+            .concatIf(isChain, buildBalancer('all-chains', 'chain', false));
 
         observatory = {
-            subjectSelector: isChain ? ["chain", "proxy"] : ["proxy"],
-            probeUrl: "https://www.gstatic.com/generate_204",
+            subjectSelector: isChain ? ['chain', 'proxy'] : ['proxy'],
+            probeUrl: 'https://www.gstatic.com/generate_204',
             probeInterval: `${isWarp
-                ? bestWarpInterval
-                : bestVLTRInterval}s`,
+                ? warpBestPingInterval
+                : bestPingInterval}s`,
             enableConcurrency: true
         } satisfies Observatory;
     }
@@ -70,44 +69,49 @@ async function buildConfig(
     const config: Config = {
         remarks: remark,
         version: {
-            min: "25.10.15"
+            min: '26.2.6'
         },
         log: {
             loglevel: logLevel,
         },
         dns: await buildDNS(outboundAddrs, isWorkerLess, isWarp, domainToStaticIPs, customDns, customDnsHosts),
         inbounds: [
-            buildMixedInbound(allowLANConnection, isWorkerLess, fakeDNS),
-            buildDokodemoInbound(allowLANConnection)
+            buildMixedInbound(allowLANConnection, isWorkerLess, isWorkerLess || fakeDNS),
+            buildDokodemoInbound(allowLANConnection),
+            // buildTunInbound(isWorkerLess, fakeDNS)
         ],
         outbounds: [
             ...outbounds,
             {
-                protocol: "dns",
+                protocol: 'dns',
                 settings: {
-                    nonIPQuery: "reject"
+                    rules: [
+                        {
+                            action: 'hijack'
+                        }
+                    ]
                 },
-                tag: "dns-out"
+                tag: 'dns-out'
             },
             {
-                protocol: "freedom",
+                protocol: 'freedom',
                 settings: {
-                    domainStrategy: "UseIP"
+                    domainStrategy: 'UseIP'
                 },
-                tag: "direct"
+                tag: 'direct'
             },
             {
-                protocol: "blackhole",
+                protocol: 'blackhole',
                 settings: {
                     response: {
-                        type: "http"
+                        type: 'http'
                     }
                 },
-                tag: "block"
+                tag: 'block'
             },
         ],
         routing: {
-            domainStrategy: "IPIfNonMatch",
+            domainStrategy: 'IPIfNonMatch',
             rules: buildRoutingRules(isChain, isBalancer, isWorkerLess, isWarp),
             balancers
         },
@@ -137,26 +141,26 @@ async function addBestPingConfigs(
     totalAddresses: string[],
     proxyOutbounds: Outbound[],
     chainOutbounds: Outbound[],
-    isFragment: boolean
+    isFragment: boolean,
+    isCustomDomain: boolean
 ) {
+    totalAddresses = [...new Set(totalAddresses)];
     const isChain = !!chainOutbounds.length;
     const chainSign = isChain ? '🔗 ' : '';
-    const configType = isFragment ? ' F' : '';
-    const remark = `💦 ${chainSign}Best Ping${configType} 🚀`;
+    const fragmentSign = isFragment ? 'F ' : '';
+    const customDomainSign = isCustomDomain ? 'D ' : '';
+    const configType = `${fragmentSign}${customDomainSign}`;
+
+    const remark = `💦 ${chainSign}Best Ping ${configType}🚀`;
     const outbounds = [
         ...chainOutbounds,
         ...proxyOutbounds
     ];
 
-    if (isFragment) {
-        const fragmentOutbound = buildFreedomOutbound(true, false, 'fragment');
-        outbounds.push(fragmentOutbound);
-    }
-
     const config = await buildConfig(remark, outbounds, true, isChain, true, false, false, totalAddresses);
 
     if (isChain) {
-        await addBestPingConfigs(configs, totalAddresses, proxyOutbounds, [], isFragment);
+        await addBestPingConfigs(configs, totalAddresses, proxyOutbounds, [], isFragment, isCustomDomain);
     }
 
     configs.push(config);
@@ -164,22 +168,17 @@ async function addBestPingConfigs(
 
 async function addBestFragmentConfigs(
     configs: Config[],
-    outbound: Outbound,
     chainProxy?: Outbound
 ) {
-    const {
-        httpConfig: { hostName },
-        settings: { fragmentIntervalMin, fragmentIntervalMax }
-    } = globalThis;
-
+    const { mainDomain, fragmentDelayMin, fragmentDelayMax } = getSettings();
     const isChain = !!chainProxy;
     const outbounds: Outbound[] = [];
     const bestFragValues = [
-        "1-5", "1-10", "10-20", "20-30",
-        "30-40", "40-50", "50-60", "60-70",
-        "70-80", "80-90", "90-100", "10-30",
-        "20-40", "30-50", "40-60", "50-70",
-        "60-80", "70-90", "80-100", "100-200"
+        '1-5', '1-10', '10-20', '20-30',
+        '30-40', '40-50', '50-60', '60-70',
+        '70-80', '80-90', '90-100', '10-30',
+        '20-40', '30-50', '40-60', '50-70',
+        '60-80', '70-90', '80-100', '100-200'
     ];
 
     bestFragValues.forEach((fragLength, index) => {
@@ -188,15 +187,23 @@ async function addBestFragmentConfigs(
             outbounds.push(chain);
         }
 
-        const proxy = modifyOutbound(outbound, `proxy-${index + 1}`, `fragment-${index + 1}`);
-        const fragInterval = toRange(fragmentIntervalMin, fragmentIntervalMax);
-        const fragment = buildFreedomOutbound(true, false, `fragment-${index + 1}`, fragLength, fragInterval);
-        outbounds.push(proxy, fragment);
+        const proxy = buildWebsocketOutbound(
+            `proxy-${index + 1}`,
+            _VL_,
+            mainDomain,
+            443,
+            mainDomain,
+            true,
+            fragLength,
+            `${fragmentDelayMin}-${fragmentDelayMax}`
+        );
+
+        outbounds.push(proxy);
     });
 
     const chainSign = isChain ? '🔗 ' : '';
     const config = await buildConfig(
-        `💦 ${chainSign}Best Fragment 😎`,
+        `💦 ${chainSign}Smart Fragment 🧠`,
         outbounds,
         true,
         isChain,
@@ -204,11 +211,11 @@ async function addBestFragmentConfigs(
         false,
         false,
         [],
-        hostName
+        mainDomain
     );
 
     if (chainProxy) {
-        await addBestFragmentConfigs(configs, outbound);
+        await addBestFragmentConfigs(configs);
     }
 
     configs.push(config);
@@ -225,7 +232,7 @@ async function addWorkerlessConfigs(configs: Config[]) {
     ];
 
     const cfDnsConfig = await buildConfig(
-        `💦 1 - Workerless ⭐`,
+        `💦 1 - Serverless 🌟`,
         outbounds,
         false,
         false,
@@ -234,12 +241,12 @@ async function addWorkerlessConfigs(configs: Config[]) {
         true,
         [],
         undefined,
-        "cloudflare-dns.com",
-        ["cloudflare.com"]
+        'cloudflare-dns.com',
+        ['cloudflare.com']
     );
 
     const googleDnsConfig = await buildConfig(
-        `💦 2 - Workerless ⭐`,
+        `💦 2 - Serverless 🌟`,
         outbounds,
         false,
         false,
@@ -248,99 +255,117 @@ async function addWorkerlessConfigs(configs: Config[]) {
         true,
         [],
         undefined,
-        "dns.google",
-        ["8.8.8.8", "8.8.4.4"]
+        'dns.google',
+        ['8.8.8.8', '8.8.4.4']
     );
 
     configs.push(cfDnsConfig, googleDnsConfig);
 }
 
 export async function getXrCustomConfigs(isFragment: boolean): Promise<Response> {
-    const { outProxy, ports } = globalThis.settings;
-    const chainProxy = outProxy ? buildChainOutbound() : undefined;
+    const {
+        chainProxy,
+        ports,
+        mainDomain,
+        customDomain,
+        upstreamParams: { upstreamServer, upstreamPort }
+    } = getSettings();
 
-    const Addresses = await getConfigAddresses(isFragment);
-    const totalPorts = ports.filter(port => !isFragment || isHttps(port));
+    const chainOutbound = chainProxy ? buildChainOutbound() : undefined;
+    const domains = [mainDomain].concatIf(!!customDomain, customDomain);
     const protocols = getProtocols();
 
     const configs: Config[] = [];
-    const proxies: Outbound[] = [];
-    const chains: Outbound[] = [];
-    const fragment = isFragment ? [buildFreedomOutbound(true, false, 'fragment')] : [];
     let index = 1;
+    
+    for (const domain of domains) {
+        let totalHosts: string[] = [];
+        const proxies: Outbound[] = [];
+        const chains: Outbound[] = [];
+        const totalPorts = ports.filter(port => !isFragment && domain.endsWith('workers.dev') || isHttps(port));
+        const hosts = await getConfigAddresses(domain, isFragment);
+        
+        if (upstreamServer && upstreamPort && !isFragment) {
+            totalPorts.unshift(upstreamPort);
+            hosts.unshift(upstreamServer);
+        }
 
-    for (const protocol of protocols) {
-        let protocolIndex = 1;
-        for (const port of totalPorts) {
-            for (const addr of Addresses) {
-                const outbound = buildWebsocketOutbound(protocol, addr, port, isFragment);
-                const outbounds = [outbound, ...fragment];
+        totalHosts.push(...hosts);
+        for (const protocol of protocols) {
+            let protocolIndex = 1;
 
-                const proxy = modifyOutbound(outbound, `proxy-${index}`);
-                proxies.push(proxy);
+            for (const port of totalPorts) {
+                for (const host of hosts) {
+                    if ((port === upstreamPort) !== (host === upstreamServer)) continue;
 
-                const remark = generateRemark(protocolIndex, port, addr, protocol, isFragment, false);
-                const config = await buildConfig(remark, outbounds, false, false, false, false, false, [addr]);
-                configs.push(config);
+                    const outbound = buildWebsocketOutbound('proxy', protocol, host, port, domain, isFragment);
+                    const proxy = modifyOutbound(outbound, `proxy-${index}`);
+                    proxies.push(proxy);
 
-                if (chainProxy) {
-                    const remark = generateRemark(protocolIndex, port, addr, protocol, isFragment, true);
-                    const chainConfig = await buildConfig(remark, [chainProxy, ...outbounds], false, true, false, false, false, [addr]);
-                    configs.push(chainConfig);
+                    const remark = generateRemark(protocolIndex, port, host, protocol, domain, isFragment, false);
+                    const config = await buildConfig(remark, [outbound], false, false, false, false, false, [host]);
+                    configs.push(config);
 
-                    const chain = modifyOutbound(chainProxy, `chain-${index}`, `proxy-${index}`);
-                    chains.push(chain);
+                    if (chainOutbound) {
+                        const remark = generateRemark(protocolIndex, port, host, protocol, domain, isFragment, true);
+                        const chainConfig = await buildConfig(remark, [chainOutbound, outbound], false, true, false, false, false, [host]);
+                        configs.push(chainConfig);
+
+                        const chain = modifyOutbound(chainOutbound, `chain-${index}`, `proxy-${index}`);
+                        chains.push(chain);
+                    }
+
+                    protocolIndex++;
+                    index++;
                 }
-
-                protocolIndex++;
-                index++;
             }
         }
+
+        const isCustomDomain = domain === customDomain;
+        await addBestPingConfigs(configs, totalHosts, proxies, chains, isFragment, isCustomDomain);
     }
 
-    await addBestPingConfigs(configs, Addresses, proxies, chains, isFragment);
-
     if (isFragment) {
-        await addBestFragmentConfigs(configs, proxies[0], chainProxy);
+        await addBestFragmentConfigs(configs, chainOutbound);
         await addWorkerlessConfigs(configs);
     }
 
+    const fileName = isFragment ? 'fragment' : 'normal';
     return new Response(JSON.stringify(configs, null, 4), {
         status: 200,
         headers: {
-            'Content-Type': 'text/plain;charset=utf-8',
-            'Cache-Control': 'no-store',
-            'CDN-Cache-Control': 'no-store'
+            'Content-Type': 'application/json',
+            'Content-Disposition': `attachment; filename=${_project_SM_}-${fileName}-xray.json`,
+            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0'
         }
     });
 }
 
 export async function getXrWarpConfigs(
-    request: Request,
-    env: Env,
     isPro: boolean,
     isKnocker: boolean
 ): Promise<Response> {
-    const { warpEndpoints } = globalThis.settings;
-    const { warpAccounts } = await getDataset(request, env);
+    const { warpEndpoints } = getSettings();
+    const warpAccounts = getWarpAccounts();
 
     const proIndicator = isPro ? ' Pro ' : ' ';
     const configs: Config[] = [];
     const proxies: Outbound[] = [];
     const chains: Outbound[] = [];
     const outboundDomains: string[] = [];
-    const udpNoise: Outbound[] = isPro && !isKnocker ? [buildFreedomOutbound(false, true, 'udp-noise')] : [];
 
     for (const [index, endpoint] of warpEndpoints.entries()) {
         const { host } = parseHostPort(endpoint);
         if (isDomain(host)) outboundDomains.push(host);
 
-        const warpOutbound = buildWarpOutbound(warpAccounts[0], endpoint, false, isPro);
-        const wowOutbound = buildWarpOutbound(warpAccounts[1], endpoint, true, isPro);
+        const warpOutbound = buildWarpOutbound(warpAccounts[0], endpoint, false, isPro, isKnocker);
+        const wowOutbound = buildWarpOutbound(warpAccounts[1], endpoint, true, isPro, isKnocker);
 
         const warpConfig = await buildConfig(
             `💦 ${index + 1} - Warp${proIndicator}🇮🇷`,
-            [warpOutbound, ...udpNoise],
+            [warpOutbound],
             false,
             false,
             false,
@@ -351,7 +376,7 @@ export async function getXrWarpConfigs(
 
         const wowConfig = await buildConfig(
             `💦 ${index + 1} - WoW${proIndicator}🌍`,
-            [wowOutbound, warpOutbound, ...udpNoise],
+            [wowOutbound, warpOutbound],
             false,
             true,
             false,
@@ -371,7 +396,7 @@ export async function getXrWarpConfigs(
 
     const warpBestPing = await buildConfig(
         `💦 Warp${proIndicator}- Best Ping 🚀`,
-        [...proxies, ...udpNoise],
+        [...proxies],
         true,
         false,
         false,
@@ -382,7 +407,7 @@ export async function getXrWarpConfigs(
 
     const wowBestPing = await buildConfig(
         `💦 WoW${proIndicator}- Best Ping 🚀`,
-        [...chains, ...proxies, ...udpNoise],
+        [...chains, ...proxies],
         true,
         true,
         false,
@@ -393,12 +418,15 @@ export async function getXrWarpConfigs(
 
     configs.push(warpBestPing, wowBestPing);
 
+    const fileName = isPro ? 'warp-Pro' : 'warp';
     return new Response(JSON.stringify(configs, null, 4), {
         status: 200,
         headers: {
-            'Content-Type': 'text/plain;charset=utf-8',
-            'Cache-Control': 'no-store',
-            'CDN-Cache-Control': 'no-store'
+            'Content-Type': 'application/json',
+            'Content-Disposition': `attachment; filename=${_project_SM_}-${fileName}-xray.json`,
+            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0'
         }
     });
 }
@@ -407,7 +435,7 @@ function modifyOutbound(outbound: Outbound, tag: string, dialerProxy?: string): 
     const newOutbound = structuredClone(outbound);
     newOutbound.tag = tag;
 
-    if (dialerProxy && newOutbound.streamSettings) {
+    if (dialerProxy && newOutbound.streamSettings?.sockopt) {
         newOutbound.streamSettings.sockopt.dialerProxy = dialerProxy;
     }
 

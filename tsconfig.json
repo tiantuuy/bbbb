@@ -3,9 +3,8 @@
     "compilerOptions": {
         "target": "esnext",
         "module": "esnext",
-        "types": ["@cloudflare/workers-types"],
-        "moduleResolution": "node",
-        "baseUrl": "src",
+        "types": ["@cloudflare/workers-types", "node"],
+        "moduleResolution": "bundler",
         "strict": true,
         "esModuleInterop": true,
         "forceConsistentCasingInFileNames": true,
@@ -13,16 +12,22 @@
         "resolveJsonModule": true,
         "isolatedModules": true,
         "paths": {
-            "@xray/*": ["cores/xray/*"],
-            "@sing-box/*": ["cores/sing-box/*"],
-            "@clash/*": ["cores/clash/*"],
-            "@utils": ["cores/utils"],
-            "@handlers": ["common/handlers"],
-            "@init": ["common/init"],
-            "@common": ["common/common"],
-            "@vless": ["protocols/websocket/vless"],
-            "@trojan": ["protocols/websocket/trojan"],
-            "@warp": ["protocols/warp"]
+            "@cores/*": ["./src/cores/*"],
+            "@xray/*": ["./src/cores/xray/*"],
+            "@sing-box/*": ["./src/cores/sing-box/*"],
+            "@clash/*": ["./src/cores/clash/*"],
+            "@utils": ["./src/cores/utils"],
+            "@handlers/*": ["./src/handlers/*"],
+            "@settings": ["./src/settings/settings"],
+            "@validators": ["./src/settings/validators"],
+            "@common": ["./src/common/common"],
+            "@kv": ["./src/settings/kv"],
+            "@main": ["./src/settings/main"],
+            "@api/*": ["./src/api/*"],
+            "@protocols/*": ["./src/protocols/*"],
+            "@auth": ["./src/auth/auth"],
+            "@workers": ["./src/workers"],
+            "#types/*": ["./src/types/*"]
         }
     }
 }
